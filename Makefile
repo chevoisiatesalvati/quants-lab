@@ -131,10 +131,18 @@ else
 		conda run --no-capture-output -n quants-lab python3 cli.py validate-config --config config/$(config)
 endif
 
-stop-tasks:  ## Stop all running task containers
+stop-tasks:  ## Stop all running task containers and clean up MongoDB locks
 	@echo "🛑 Stopping all task runners..."
 	@docker ps --filter ancestor=hummingbot/quants-lab --format "{{.Names}}" | xargs -r docker stop || true
 	@echo "✅ All task runners stopped"
+	@echo "🧹 Cleaning up stale task locks in MongoDB..."
+	@docker run --rm \
+		-v $(shell pwd)/scripts:/quants-lab/scripts \
+		--env-file .env \
+		--network host \
+		hummingbot/quants-lab \
+		conda run --no-capture-output -n quants-lab python3 scripts/cleanup_tasks.py || true
+	@echo "✅ Cleanup complete"
 
 logs-tasks:  ## View logs from running tasks
 	@docker ps --filter ancestor=hummingbot/quants-lab --format "{{.Names}}" | head -1 | xargs -r docker logs -f

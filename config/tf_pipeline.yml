@@ -10,21 +10,21 @@ tasks:
 
     max_retries: 2
     retry_delay_seconds: 300
-    timeout_seconds: 1800  # 30 minutes
-    
+    timeout_seconds: 1800 # 30 minutes
+
     config:
       notebooks:
-        - path: "data_collection/download_candles_all_pairs.ipynb"
-        - path: "feature_engineering/trend_follower_grid.ipynb"
-        - path: "bot_orchestration/tf_pipeline.ipynb"
+        - path: 'data_collection/download_candles_all_pairs.ipynb'
+        - path: 'feature_engineering/trend_follower_grid.ipynb'
+        - path: 'bot_orchestration/tf_pipeline.ipynb'
 
-      output_dir: "app/outputs/tf_pipeline"
-      save_outputs: true
+      output_dir: 'app/outputs/tf_pipeline'
+      save_outputs: false
       extract_results: true
-      kernel_name: "python3"
-      timeout: "30m"
-      execution: "sequential"  # Run notebooks one after another
-    
+      kernel_name: 'quants-lab'
+      timeout: '30m'
+      execution: 'sequential' # Run notebooks one after another
+
     tags:
       - notebook
       - etl

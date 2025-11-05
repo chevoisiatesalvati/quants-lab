@@ -42,13 +42,15 @@ class MongoClient:
         """Create a collection in a given database."""
         db = self.client[db_name] if db_name else self.db
         await db.create_collection(collection_name)
-        logging.info(f"Collection {collection_name} created in {db_name or self.db.name}.")
+        logging.info(
+            f"Collection {collection_name} created in {db_name or self.db.name}.")
 
     async def delete_collection(self, collection_name: str, db_name: Optional[str] = None):
         """Delete a collection from a given database."""
         db = self.client[db_name] if db_name else self.db
         await db[collection_name].drop()
-        logging.info(f"Collection {collection_name} deleted from {db_name or self.db.name}.")
+        logging.info(
+            f"Collection {collection_name} deleted from {db_name or self.db.name}.")
 
     async def insert_documents(self, collection_name: str, documents: Union[Dict[str, Any], List[Dict[str, Any]]],
                                db_name: Optional[str] = None, index: List[str] = []):
@@ -63,9 +65,11 @@ class MongoClient:
             if index:
                 await collection.create_index(index)
             result = await collection.insert_many(documents)
-            logging.info(f"Inserted {len(result.inserted_ids)} documents into {collection_name}.")
+            logging.info(
+                f"Inserted {len(result.inserted_ids)} documents into {collection_name}.")
         except Exception as e:
-            logging.error(f"Error inserting documents into {collection_name}: {str(e)}")
+            logging.error(
+                f"Error inserting documents into {collection_name}: {str(e)}")
             raise
 
     async def get_documents(self, collection_name: str, query: Dict[str, Any] = None, db_name: Optional[str] = None,
@@ -80,10 +84,12 @@ class MongoClient:
             if limit:
                 cursor = cursor.limit(limit)
             documents = await cursor.to_list(length=None)
-            logging.info(f"Retrieved {len(documents)} documents from {collection_name}.")
+            logging.info(
+                f"Retrieved {len(documents)} documents from {collection_name}.")
             return documents
         except Exception as e:
-            logging.error(f"Error retrieving documents from {collection_name}: {str(e)}")
+            logging.error(
+                f"Error retrieving documents from {collection_name}: {str(e)}")
             raise
 
     async def delete_documents(self, collection_name: str, query: Dict[str, Any], db_name: Optional[str] = None):
@@ -92,17 +98,19 @@ class MongoClient:
         collection = db[collection_name]
         try:
             result = await collection.delete_many(query)
-            logging.info(f"Deleted {result.deleted_count} documents from {collection_name}.")
+            logging.info(
+                f"Deleted {result.deleted_count} documents from {collection_name}.")
         except Exception as e:
-            logging.error(f"Error deleting documents from {collection_name}: {str(e)}")
+            logging.error(
+                f"Error deleting documents from {collection_name}: {str(e)}")
             raise
-    
+
     def get_database(self, db_name: Optional[str] = None):
         """Get a database by name or return the default database."""
         if db_name:
             return self.client[db_name]
         return self.db
-    
+
     def get_collection(self, db_name: str, collection_name: str):
         """Get a collection from a specific database."""
         db = self.client[db_name] if db_name else self.db

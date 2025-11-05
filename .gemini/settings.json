@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "hummingbot-mcp": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/home/saul/projects/Hummingbot/mcp/",
+        "run",
+        "main.py"
+      ]
+    }
+  }
+}

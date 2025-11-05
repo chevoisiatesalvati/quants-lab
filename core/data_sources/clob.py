@@ -39,41 +39,42 @@ INTERVAL_MAPPING = {
 
 
 class CLOBDataSource:
-    CONNECTOR_TYPES = [ConnectorType.CLOB_SPOT, ConnectorType.CLOB_PERP, ConnectorType.Exchange, ConnectorType.Derivative]
-    EXCLUDED_CONNECTORS = ["vega_perpetual", "hyperliquid_perpetual", "dydx_perpetual", "cube", "ndax",
+    CONNECTOR_TYPES = [ConnectorType.CLOB_SPOT, ConnectorType.CLOB_PERP,
+                       ConnectorType.Exchange, ConnectorType.Derivative]
+    EXCLUDED_CONNECTORS = ["vega_perpetual", "dydx_perpetual", "cube", "ndax",
                            "polkadex", "coinbase_advanced_trade", "kraken", "dydx_v4_perpetual", "hitbtc",
                            "hyperliquid", "dexalot", "vertex"]
 
     def __init__(self):
         logger.info("Initializing ClobDataSource")
         self.candles_factory = CandlesFactory()
-        
+
         # Initialize market feeds manager (lazy loading of feeds)
         self.market_feeds_manager = MarketFeedsManager()
-        
+
         # Cache for loaded feeds (lazy loading)
         self._trades_feeds_cache = {}
         self._oi_feeds_cache = {}
-        
+
         self.conn_settings = AllConnectorSettings.get_connector_settings()
         self.connectors = {name: self.get_connector(name) for name, settings in self.conn_settings.items()
                            if settings.type in self.CONNECTOR_TYPES and name not in self.EXCLUDED_CONNECTORS and
                            "testnet" not in name}
         self._candles_cache: Dict[Tuple[str, str, str], pd.DataFrame] = {}
         self._oi_cache: Dict[Tuple[str, str, str], pd.DataFrame] = {}
-        
+
     def _get_trades_feed(self, connector_name: str):
         """Lazy-load trades feed for a specific connector."""
         if connector_name in self._trades_feeds_cache:
             return self._trades_feeds_cache[connector_name]
-        
+
         # Map CLOB connector name to market feeds name
         market_feed_name = self._reverse_map_connector_name(connector_name)
-        
+
         available_feeds = self.market_feeds_manager.available_feeds
         if market_feed_name not in available_feeds or "trades_feed" not in available_feeds[market_feed_name]:
             raise ValueError(f"No trades feed available for {connector_name}")
-        
+
         try:
             trades_feed = self.market_feeds_manager.get_feed(
                 connector_name=market_feed_name,
@@ -83,21 +84,22 @@ class CLOBDataSource:
             logger.info(f"Loaded trades feed for {connector_name}")
             return trades_feed
         except Exception as e:
-            logger.error(f"Failed to load trades feed for {connector_name}: {e}")
+            logger.error(
+                f"Failed to load trades feed for {connector_name}: {e}")
             raise
-    
+
     def _get_oi_feed(self, connector_name: str):
         """Lazy-load OI feed for a specific connector."""
         if connector_name in self._oi_feeds_cache:
             return self._oi_feeds_cache[connector_name]
-        
+
         # Map CLOB connector name to market feeds name
         market_feed_name = self._reverse_map_connector_name(connector_name)
-        
+
         available_feeds = self.market_feeds_manager.available_feeds
         if market_feed_name not in available_feeds or "oi_feed" not in available_feeds[market_feed_name]:
             raise ValueError(f"No OI feed available for {connector_name}")
-        
+
         try:
             oi_feed = self.market_feeds_manager.get_feed(
                 connector_name=market_feed_name,
@@ -114,13 +116,15 @@ class CLOBDataSource:
         """Map CLOBDataSource connector names back to market feeds names."""
         # Reverse mapping from CLOB names to market feeds names
         mapping = {
-            "binance_perpetual": "binance",  # binance_perpetual in CLOB -> binance in market feeds
+            # binance_perpetual in CLOB -> binance in market feeds
+            "binance_perpetual": "binance",
         }
         return mapping.get(clob_name, clob_name)
 
     @staticmethod
     def get_connector_config_map(connector_name: str):
-        connector_config = AllConnectorSettings.get_connector_config_keys(connector_name)
+        connector_config = AllConnectorSettings.get_connector_config_keys(
+            connector_name)
         return {key: "" for key in connector_config.__fields__.keys() if key != "connector"}
 
     @property
@@ -135,7 +139,7 @@ class CLOBDataSource:
             except ValueError:
                 pass  # No feed available for this connector
         return result
-    
+
     @property
     def oi_feeds(self):
         """Property for backward compatibility - returns available OI feeds."""
@@ -148,7 +152,7 @@ class CLOBDataSource:
             except ValueError:
                 pass  # No feed available for this connector
         return result
-    
+
     @property
     def candles_cache(self):
         return {key: Candles(candles_df=value, connector_name=key[0], trading_pair=key[1], interval=key[2])
@@ -167,8 +171,6 @@ class CLOBDataSource:
         else:
             return None
 
-
-
     async def get_candles(self,
                           connector_name: str,
                           trading_pair: str,
@@ -177,15 +179,15 @@ class CLOBDataSource:
                           end_time: int,
                           from_trades: bool = False) -> Candles:
         cache_key = (connector_name, trading_pair, interval)
-        
+
         # Track what data needs to be fetched
         ranges_to_fetch = []
-        
+
         if cache_key in self._candles_cache:
             cached_df = self._candles_cache[cache_key]
             cached_start_time = int(cached_df.index.min().timestamp())
             cached_end_time = int(cached_df.index.max().timestamp())
-            
+
             # Case 1: All requested data is in cache
             if cached_start_time <= start_time and cached_end_time >= end_time:
                 logger.info(
@@ -193,7 +195,7 @@ class CLOBDataSource:
                 return Candles(candles_df=cached_df[(cached_df.index >= pd.to_datetime(start_time, unit='s')) &
                                                     (cached_df.index <= pd.to_datetime(end_time, unit='s'))],
                                connector_name=connector_name, trading_pair=trading_pair, interval=interval)
-            
+
             # Case 2: Partial overlap - determine what's missing
             if start_time < cached_start_time and end_time > cached_end_time:
                 # Need data on both sides
@@ -201,28 +203,34 @@ class CLOBDataSource:
                 ranges_to_fetch.append((cached_end_time + 1, end_time))
             elif start_time < cached_start_time:
                 # Need data before cache
-                ranges_to_fetch.append((start_time, min(cached_start_time - 1, end_time)))
+                ranges_to_fetch.append(
+                    (start_time, min(cached_start_time - 1, end_time)))
             elif end_time > cached_end_time:
                 # Need data after cache
-                ranges_to_fetch.append((max(cached_end_time + 1, start_time), end_time))
+                ranges_to_fetch.append(
+                    (max(cached_end_time + 1, start_time), end_time))
             else:
                 # Requested range doesn't overlap with cache at all
                 ranges_to_fetch.append((start_time, end_time))
         else:
             # No cache, fetch everything
             ranges_to_fetch.append((start_time, end_time))
-        
+
         # Fetch missing data ranges
         for fetch_start, fetch_end in ranges_to_fetch:
             try:
-                logger.info(f"Fetching data for {connector_name} {trading_pair} {interval} from {fetch_start} to {fetch_end}")
-                
+                logger.info(
+                    f"Fetching data for {connector_name} {trading_pair} {interval} from {fetch_start} to {fetch_end}")
+
                 if from_trades:
                     trades = await self.get_trades(connector_name, trading_pair, fetch_start, fetch_end)
-                    pandas_interval = self.convert_interval_to_pandas_freq(interval)
-                    candles_df = trades.resample(pandas_interval).agg({"price": "ohlc", "volume": "sum"}).ffill()
+                    pandas_interval = self.convert_interval_to_pandas_freq(
+                        interval)
+                    candles_df = trades.resample(pandas_interval).agg(
+                        {"price": "ohlc", "volume": "sum"}).ffill()
                     candles_df.columns = candles_df.columns.droplevel(0)
-                    candles_df["timestamp"] = pd.to_numeric(candles_df.index) // 1e9
+                    candles_df["timestamp"] = pd.to_numeric(
+                        candles_df.index) // 1e9
                 else:
                     candle = self.candles_factory.get_candle(CandlesConfig(
                         connector=connector_name,
@@ -238,34 +246,36 @@ class CLOBDataSource:
                     ))
                     if candles_df is None or candles_df.empty:
                         continue
-                    candles_df.index = pd.to_datetime(candles_df.timestamp, unit='s')
-                
+                    candles_df.index = pd.to_datetime(
+                        candles_df.timestamp, unit='s')
+
                 # Update cache with new data
                 if cache_key in self._candles_cache:
                     self._candles_cache[cache_key] = pd.concat(
                         [self._candles_cache[cache_key], candles_df]).drop_duplicates(keep='first').sort_index()
                 else:
                     self._candles_cache[cache_key] = candles_df
-                    
+
             except Exception as e:
                 logger.error(f"Error fetching candles for {connector_name} {trading_pair} {interval} "
-                           f"from {fetch_start} to {fetch_end}: {type(e).__name__} - {e}")
+                             f"from {fetch_start} to {fetch_end}: {type(e).__name__} - {e}")
                 # Continue with partial data if one range fails
                 if cache_key not in self._candles_cache:
                     raise
-        
+
         # Return the requested slice from cache
         if cache_key in self._candles_cache:
             result_df = self._candles_cache[cache_key][
                 (self._candles_cache[cache_key].index >= pd.to_datetime(start_time, unit='s')) &
-                (self._candles_cache[cache_key].index <= pd.to_datetime(end_time, unit='s'))
+                (self._candles_cache[cache_key].index <=
+                 pd.to_datetime(end_time, unit='s'))
             ]
-            return Candles(candles_df=result_df, connector_name=connector_name, 
-                          trading_pair=trading_pair, interval=interval)
+            return Candles(candles_df=result_df, connector_name=connector_name,
+                           trading_pair=trading_pair, interval=interval)
         else:
             # No data could be fetched
-            return Candles(candles_df=pd.DataFrame(), connector_name=connector_name, 
-                          trading_pair=trading_pair, interval=interval)
+            return Candles(candles_df=pd.DataFrame(), connector_name=connector_name,
+                           trading_pair=trading_pair, interval=interval)
 
     async def get_candles_last_days(self,
                                     connector_name: str,
@@ -330,7 +340,8 @@ class CLOBDataSource:
     def dump_candles_cache(self):
         # Use centralized data paths
         for key, df in self._candles_cache.items():
-            filename = data_paths.get_candles_path(f"{key[0]}|{key[1]}|{key[2]}.parquet")
+            filename = data_paths.get_candles_path(
+                f"{key[0]}|{key[1]}|{key[2]}.parquet")
             df.to_parquet(
                 filename,
                 engine='pyarrow',
@@ -339,12 +350,12 @@ class CLOBDataSource:
             )
 
         logger.info("Candles cache dumped")
-    
+
     def dump_oi_cache(self):
         # Use centralized data paths for OI
         oi_path = data_paths.oi_dir
         oi_path.mkdir(parents=True, exist_ok=True)
-        
+
         for key, df in self._oi_cache.items():
             filename = oi_path / f"{key[0]}|{key[1]}|{key[2]}.parquet"
             df.to_parquet(
@@ -353,16 +364,16 @@ class CLOBDataSource:
                 compression='snappy',
                 index=True
             )
-        
+
         logger.info(f"OI cache dumped - {len(self._oi_cache)} files")
 
-    def load_candles_cache(self, 
-                          connector_name: Optional[str] = None,
-                          trading_pair: Optional[str] = None, 
-                          interval: Optional[str] = None):
+    def load_candles_cache(self,
+                           connector_name: Optional[str] = None,
+                           trading_pair: Optional[str] = None,
+                           interval: Optional[str] = None):
         """
         Load candles from cache with optional filtering.
-        
+
         Args:
             connector_name: Optional filter by connector name
             trading_pair: Optional filter by trading pair
@@ -371,19 +382,21 @@ class CLOBDataSource:
         # Use centralized data paths
         candles_path = data_paths.candles_dir
         if not candles_path.exists():
-            logger.warning(f"Path {candles_path} does not exist, skipping cache loading.")
+            logger.warning(
+                f"Path {candles_path} does not exist, skipping cache loading.")
             return
 
         all_files = os.listdir(candles_path)
         loaded_count = 0
         skipped_count = 0
-        
+
         for file in all_files:
             if file == ".gitignore":
                 continue
             try:
-                file_connector, file_pair, file_interval = file.split(".")[0].split("|")
-                
+                file_connector, file_pair, file_interval = file.split(".")[
+                    0].split("|")
+
                 # Apply filters if provided
                 if connector_name and file_connector != connector_name:
                     skipped_count += 1
@@ -394,7 +407,7 @@ class CLOBDataSource:
                 if interval and file_interval != interval:
                     skipped_count += 1
                     continue
-                
+
                 candles = pd.read_parquet(candles_path / file)
                 candles.index = pd.to_datetime(candles.timestamp, unit='s')
                 candles.index.name = None
@@ -403,12 +416,14 @@ class CLOBDataSource:
                 for column in columns:
                     candles[column] = pd.to_numeric(candles[column])
 
-                self._candles_cache[(file_connector, file_pair, file_interval)] = candles
+                self._candles_cache[(
+                    file_connector, file_pair, file_interval)] = candles
                 loaded_count += 1
             except Exception as e:
                 logger.error(f"Error loading {file}: {type(e).__name__} - {e}")
-        
-        logger.info(f"Loaded {loaded_count} candles cache files, skipped {skipped_count} files due to filters")
+
+        logger.info(
+            f"Loaded {loaded_count} candles cache files, skipped {skipped_count} files due to filters")
 
     async def get_trades(self, connector_name: str, trading_pair: str, start_time: int, end_time: int,
                          from_id: Optional[int] = None):
@@ -419,7 +434,7 @@ class CLOBDataSource:
                      limit: int = 500):
         """Get historical open interest data for a trading pair with caching."""
         cache_key = (connector_name, trading_pair, interval)
-        
+
         # Check cache first
         if cache_key in self._oi_cache:
             cached_df = self._oi_cache[cache_key]
@@ -428,22 +443,23 @@ class CLOBDataSource:
                 mask = (cached_df.index >= pd.to_datetime(start_time, unit='s')) & \
                        (cached_df.index <= pd.to_datetime(end_time, unit='s'))
                 filtered_df = cached_df[mask]
-                
+
                 # If we have some data in the requested range, check if we need more
                 if not filtered_df.empty:
                     cached_start = int(cached_df.index.min().timestamp())
                     cached_end = int(cached_df.index.max().timestamp())
-                    
+
                     # If all requested data is in cache, return it
                     if cached_start <= start_time and cached_end >= end_time:
-                        logger.info(f"Using cached OI data for {connector_name} {trading_pair} {interval}")
+                        logger.info(
+                            f"Using cached OI data for {connector_name} {trading_pair} {interval}")
                         return filtered_df
-        
+
         # Fetch from feed if not in cache or need more data
         try:
             feed = self._get_oi_feed(connector_name)
             oi_df = await feed.get_historical_oi(trading_pair, interval, start_time, end_time, limit)
-            
+
             # Update cache
             if not oi_df.empty:
                 if cache_key in self._oi_cache:
@@ -453,12 +469,14 @@ class CLOBDataSource:
                     ).drop_duplicates(keep='first').sort_index()
                 else:
                     self._oi_cache[cache_key] = oi_df
-                    
-                logger.info(f"Cached {len(oi_df)} OI records for {connector_name} {trading_pair} {interval}")
-            
+
+                logger.info(
+                    f"Cached {len(oi_df)} OI records for {connector_name} {trading_pair} {interval}")
+
             return oi_df
         except Exception as e:
-            logger.error(f"Error fetching OI data for {connector_name} {trading_pair}: {e}")
+            logger.error(
+                f"Error fetching OI data for {connector_name} {trading_pair}: {e}")
             # Return empty DataFrame on error
             return pd.DataFrame()
 
@@ -498,9 +516,9 @@ class CLOBDataSource:
                 await asyncio.sleep(sleep_time)
         return all_oi_data
 
-    async def filter_oi_supported_pairs(self, connector_name: str, trading_pairs: List, 
-                                       interval: str = "1h", max_test_pairs: int = 50, 
-                                       batch_size: int = 10) -> List[str]:
+    async def filter_oi_supported_pairs(self, connector_name: str, trading_pairs: List,
+                                        interval: str = "1h", max_test_pairs: int = 50,
+                                        batch_size: int = 10) -> List[str]:
         """Filter trading pairs to only those that support OI data."""
         try:
             feed = self._get_oi_feed(connector_name)
@@ -508,7 +526,8 @@ class CLOBDataSource:
                 trading_pairs, interval, batch_size=batch_size, max_test_pairs=max_test_pairs
             )
         except ValueError:
-            logger.error(f"No OI feed available for connector {connector_name}")
+            logger.error(
+                f"No OI feed available for connector {connector_name}")
             return []
 
     async def get_order_book_snapshot(self, connector_name: str, trading_pair: str, depth: int = 10) -> Dict:
@@ -543,17 +562,20 @@ class CLOBDataSource:
                     "timestamp": time.time()
                 }
 
-                logger.debug(f"Retrieved order book snapshot for {connector_name}/{trading_pair}")
+                logger.debug(
+                    f"Retrieved order book snapshot for {connector_name}/{trading_pair}")
                 return result
             else:
-                raise ValueError(f"Order book data source not available for {connector_name}")
+                raise ValueError(
+                    f"Order book data source not available for {connector_name}")
 
         except Exception as e:
-            logger.error(f"Error getting order book snapshot for {connector_name}/{trading_pair}: {e}")
+            logger.error(
+                f"Error getting order book snapshot for {connector_name}/{trading_pair}: {e}")
             raise
 
     async def get_order_book_price_for_volume(self, connector_name: str, trading_pair: str,
-                                             is_buy: bool, volume: float) -> Dict:
+                                              is_buy: bool, volume: float) -> Dict:
         """
         Get the price needed to fill a specific volume.
 
@@ -586,14 +608,16 @@ class CLOBDataSource:
                     "timestamp": time.time()
                 }
             else:
-                raise ValueError(f"Order book data source not available for {connector_name}")
+                raise ValueError(
+                    f"Order book data source not available for {connector_name}")
 
         except Exception as e:
-            logger.error(f"Error getting price for volume for {connector_name}/{trading_pair}: {e}")
+            logger.error(
+                f"Error getting price for volume for {connector_name}/{trading_pair}: {e}")
             raise
 
     async def get_order_book_volume_for_price(self, connector_name: str, trading_pair: str,
-                                             is_buy: bool, price: float) -> Dict:
+                                              is_buy: bool, price: float) -> Dict:
         """
         Get the volume available at a specific price.
 
@@ -626,14 +650,16 @@ class CLOBDataSource:
                     "timestamp": time.time()
                 }
             else:
-                raise ValueError(f"Order book data source not available for {connector_name}")
+                raise ValueError(
+                    f"Order book data source not available for {connector_name}")
 
         except Exception as e:
-            logger.error(f"Error getting volume for price for {connector_name}/{trading_pair}: {e}")
+            logger.error(
+                f"Error getting volume for price for {connector_name}/{trading_pair}: {e}")
             raise
 
     async def get_order_book_price_for_quote_volume(self, connector_name: str, trading_pair: str,
-                                                   is_buy: bool, quote_volume: float) -> Dict:
+                                                    is_buy: bool, quote_volume: float) -> Dict:
         """
         Get the price needed to fill a specific quote volume.
 
@@ -655,7 +681,8 @@ class CLOBDataSource:
                 orderbook_ds = connector._orderbook_ds
                 order_book = await orderbook_ds.get_new_order_book(trading_pair)
 
-                result = order_book.get_price_for_quote_volume(is_buy, quote_volume)
+                result = order_book.get_price_for_quote_volume(
+                    is_buy, quote_volume)
 
                 return {
                     "trading_pair": trading_pair,
@@ -666,14 +693,16 @@ class CLOBDataSource:
                     "timestamp": time.time()
                 }
             else:
-                raise ValueError(f"Order book data source not available for {connector_name}")
+                raise ValueError(
+                    f"Order book data source not available for {connector_name}")
 
         except Exception as e:
-            logger.error(f"Error getting price for quote volume for {connector_name}/{trading_pair}: {e}")
+            logger.error(
+                f"Error getting price for quote volume for {connector_name}/{trading_pair}: {e}")
             raise
 
     async def get_order_book_quote_volume_for_price(self, connector_name: str, trading_pair: str,
-                                                   is_buy: bool, quote_price: float) -> Dict:
+                                                    is_buy: bool, quote_price: float) -> Dict:
         """
         Get the quote volume available at a specific price.
 
@@ -695,14 +724,18 @@ class CLOBDataSource:
                 orderbook_ds = connector._orderbook_ds
                 order_book = await orderbook_ds.get_new_order_book(trading_pair)
 
-                result = order_book.get_quote_volume_for_price(is_buy, quote_price)
+                result = order_book.get_quote_volume_for_price(
+                    is_buy, quote_price)
 
                 # Check if quote crosses the book
                 if result.result_volume is None or result.result_price is None:
                     snapshot = order_book.snapshot
-                    best_bid = float(snapshot[0].iloc[0]["price"]) if not snapshot[0].empty else None
-                    best_ask = float(snapshot[1].iloc[0]["price"]) if not snapshot[1].empty else None
-                    mid_price = (best_bid + best_ask) / 2 if best_bid and best_ask else None
+                    best_bid = float(
+                        snapshot[0].iloc[0]["price"]) if not snapshot[0].empty else None
+                    best_ask = float(
+                        snapshot[1].iloc[0]["price"]) if not snapshot[1].empty else None
+                    mid_price = (best_bid + best_ask) / \
+                        2 if best_bid and best_ask else None
 
                     crossed_reason = None
                     suggested_price = None
@@ -746,14 +779,16 @@ class CLOBDataSource:
                     "timestamp": time.time()
                 }
             else:
-                raise ValueError(f"Order book data source not available for {connector_name}")
+                raise ValueError(
+                    f"Order book data source not available for {connector_name}")
 
         except Exception as e:
-            logger.error(f"Error getting quote volume for price for {connector_name}/{trading_pair}: {e}")
+            logger.error(
+                f"Error getting quote volume for price for {connector_name}/{trading_pair}: {e}")
             raise
 
     async def get_order_book_vwap(self, connector_name: str, trading_pair: str,
-                                 is_buy: bool, volume: float) -> Dict:
+                                  is_buy: bool, volume: float) -> Dict:
         """
         Get the VWAP (Volume Weighted Average Price) for a specific volume.
 
@@ -786,10 +821,12 @@ class CLOBDataSource:
                     "timestamp": time.time()
                 }
             else:
-                raise ValueError(f"Order book data source not available for {connector_name}")
+                raise ValueError(
+                    f"Order book data source not available for {connector_name}")
 
         except Exception as e:
-            logger.error(f"Error getting VWAP for {connector_name}/{trading_pair}: {e}")
+            logger.error(
+                f"Error getting VWAP for {connector_name}/{trading_pair}: {e}")
             raise
 
     async def get_prices(self, connector_name: str, trading_pairs: List[str]) -> Dict[str, float]:
@@ -814,7 +851,8 @@ class CLOBDataSource:
             # Convert Decimal to float for JSON serialization
             result = {pair: float(price) for pair, price in prices.items()}
 
-            logger.debug(f"Retrieved prices for {connector_name}: {len(result)} pairs")
+            logger.debug(
+                f"Retrieved prices for {connector_name}: {len(result)} pairs")
             return result
 
         except Exception as e:
@@ -828,15 +866,15 @@ class CLOBDataSource:
         """
         return INTERVAL_MAPPING.get(interval, 'T')
 
-    async def get_funding_rate_history(self, 
-                                     symbol: str, 
-                                     start_time: Optional[int] = None,
-                                     end_time: Optional[int] = None,
-                                     limit: int = 1000) -> pd.DataFrame:
+    async def get_funding_rate_history(self,
+                                       symbol: str,
+                                       start_time: Optional[int] = None,
+                                       end_time: Optional[int] = None,
+                                       limit: int = 1000) -> pd.DataFrame:
         """Get historical funding rates for a symbol"""
         connector = self.connectors.get("binance_perpetual")
         params = {"symbol": symbol, "limit": limit}
-        
+
         if start_time:
             params["startTime"] = start_time
         if end_time:
@@ -848,7 +886,7 @@ class CLOBDataSource:
             is_auth_required=False,
             limit_id="REQUEST_WEIGHT"
         )
-        
+
         df = pd.DataFrame(response)
         if not df.empty:
             df["fundingTime"] = pd.to_datetime(df["fundingTime"], unit="ms")
@@ -867,16 +905,17 @@ class CLOBDataSource:
         """Calculate funding rate metrics for a symbol"""
         # Get historical data for last 72 hours
         end_time = int(datetime.now().timestamp() * 1000)
-        start_time = int((datetime.now() - timedelta(hours=72)).timestamp() * 1000)
-        
+        start_time = int(
+            (datetime.now() - timedelta(hours=72)).timestamp() * 1000)
+
         historical_rates = await self.get_funding_rate_history(
             symbol=symbol,
             start_time=start_time,
             end_time=end_time
         )
-        
+
         current_info = await self.get_current_funding_info(symbol)
-        
+
         if historical_rates.empty:
             return {}
 
@@ -885,10 +924,11 @@ class CLOBDataSource:
             "current_funding_rate": float(current_info[symbol]["lastFundingRate"]),
             "next_funding_time": current_info[symbol]["nextFundingTime"],
             "mark_price": float(current_info[symbol]["markPrice"]),
-            "avg_funding_24h": float(historical_rates.tail(8)["fundingRate"].mean()),  # 8 funding intervals = 24h
+            # 8 funding intervals = 24h
+            "avg_funding_24h": float(historical_rates.tail(8)["fundingRate"].mean()),
             "avg_funding_72h": float(historical_rates["fundingRate"].mean()),
             "funding_history": historical_rates.reset_index().to_dict(orient="records"),
             "updated_at": datetime.now()
         }
-        
+
         return metrics

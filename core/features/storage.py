@@ -26,7 +26,8 @@ class FeatureStorage:
         if self.mongo_client:
             logger.info("Connected to MongoDB for feature storage")
         else:
-            raise RuntimeError("Failed to connect to MongoDB. Ensure MONGO_URI is set in environment variables.")
+            raise RuntimeError(
+                "Failed to connect to MongoDB. Ensure MONGO_URI is set in environment variables.")
 
     async def disconnect(self):
         """Disconnect from MongoDB"""
@@ -47,7 +48,8 @@ class FeatureStorage:
         await self.mongo_client.insert_documents(
             collection_name=self.features_collection,
             documents=documents,
-            index=["feature_name", "trading_pair", "connector_name", "timestamp"]
+            index=["feature_name", "trading_pair",
+                   "connector_name", "timestamp"]
         )
         logger.info(f"Saved {len(features)} features to MongoDB")
 
